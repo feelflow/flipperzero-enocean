@@ -45,7 +45,7 @@
  *  => data rate = (256+59) * 2^12 / 2^28 * 26 MHz ~= 124.97 kBaud
  *  MDMCFG2 = 0x30 : ASK/OOK, no Manchester, no sync word
  */
-static const uint8_t enocean_cc1101_preset[] = {
+static const uint8_t enocean_cc1101_preset_base[] = {
     0x02, 0x0D, /* IOCFG0: GDO0 = async serial data output */
     0x03, 0x07, /* FIFOTHR */
     0x08, 0x32, /* PKTCTRL0: async serial mode, infinite packet length */
@@ -66,6 +66,34 @@ static const uint8_t enocean_cc1101_preset[] = {
     0x00, 0x00, /* end of register list */
     0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* PA table */
 };
+
+/* Byte offsets of the values inside the preset array above. */
+#define PRESET_OFF_MDMCFG4 9
+#define PRESET_OFF_MDMCFG3 11
+#define PRESET_OFF_MDMCFG2 13
+
+typedef struct {
+    const char* name;
+    uint8_t mdmcfg4; /* CHANBW_E/M + DRATE_E */
+    uint8_t mdmcfg3; /* DRATE_M */
+    uint8_t mdmcfg2; /* bit7 = DEM_DCFILT_OFF, bits 6:4 = 011 (ASK/OOK) */
+} EnOceanPresetVariant;
+
+/*
+ * Variants to compare on the device (Left/Right cycles them):
+ *  - RX bandwidth 650 kHz (0x1x) vs 812 kHz (0x0x)
+ *  - digital DC blocking filter on (0x30) vs off (0xB0); with long runs of equal
+ *    levels the DC filter can distort the slicer output
+ *  - data rate ~125 kBaud (DRATE_E=12) vs ~250 kBaud (DRATE_E=13)
+ */
+static const EnOceanPresetVariant enocean_variants[] = {
+    {"650k", 0x1C, 0x3B, 0x30},
+    {"812k", 0x0C, 0x3B, 0x30},
+    {"650k DCoff", 0x1C, 0x3B, 0xB0},
+    {"812k DCoff", 0x0C, 0x3B, 0xB0},
+    {"812k 250k DCoff", 0x0D, 0x3B, 0xB0},
+};
+#define ENOCEAN_VARIANT_COUNT (sizeof(enocean_variants) / sizeof(enocean_variants[0]))
 
 typedef struct {
     Gui* gui;
@@ -92,6 +120,9 @@ typedef struct {
     bool logging;
     bool log_ok;
     volatile uint32_t overruns;
+
+    uint8_t variant; /* index into enocean_variants */
+    uint8_t preset_buf[sizeof(enocean_cc1101_preset_base)];
 } EnOceanApp;
 
 /* ---------- ISR side ---------- */
@@ -107,9 +138,15 @@ static void enocean_capture_cb(bool level, uint32_t duration, void* context) {
 /* ---------- radio ---------- */
 
 static void enocean_radio_start(EnOceanApp* app) {
+    const EnOceanPresetVariant* v = &enocean_variants[app->variant];
+    memcpy(app->preset_buf, enocean_cc1101_preset_base, sizeof(app->preset_buf));
+    app->preset_buf[PRESET_OFF_MDMCFG4] = v->mdmcfg4;
+    app->preset_buf[PRESET_OFF_MDMCFG3] = v->mdmcfg3;
+    app->preset_buf[PRESET_OFF_MDMCFG2] = v->mdmcfg2;
+
     furi_hal_subghz_reset();
     furi_hal_subghz_idle();
-    furi_hal_subghz_load_custom_preset(enocean_cc1101_preset);
+    furi_hal_subghz_load_custom_preset(app->preset_buf);
     furi_hal_gpio_init(&gpio_cc1101_g0, GpioModeInput, GpioPullNo, GpioSpeedLow);
     furi_hal_subghz_set_frequency_and_path(ENOCEAN_FREQUENCY_HZ);
     furi_hal_subghz_flush_rx();
@@ -137,8 +174,10 @@ static void enocean_log_burst(EnOceanApp* app) {
         FuriString* line = furi_string_alloc();
         furi_string_printf(
             line,
-            "# burst %lu edges=%lu total_us=%lu\nRAW_Data:",
+            "# burst %lu preset=%u(%s) edges=%lu total_us=%lu\nRAW_Data:",
             (unsigned long)app->burst_total,
+            (unsigned)app->variant,
+            enocean_variants[app->variant].name,
             (unsigned long)app->edge_count,
             (unsigned long)app->last_total_us);
         for(uint32_t i = 0; i < app->edge_count; i++) {
@@ -213,7 +252,8 @@ static void enocean_draw_cb(Canvas* canvas, void* context) {
 
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 10, "EnOcean RX 868.3 MHz");
+    snprintf(buf, sizeof(buf), "P%u %s", (unsigned)app->variant, enocean_variants[app->variant].name);
+    canvas_draw_str(canvas, 2, 10, buf);
 
     canvas_set_font(canvas, FontSecondary);
     snprintf(
@@ -256,7 +296,7 @@ static void enocean_draw_cb(Canvas* canvas, void* context) {
     snprintf(
         buf,
         sizeof(buf),
-        "OK: log %s%s  Back: exit",
+        "OK:log %s%s  </>:preset",
         app->logging ? "ON" : "OFF",
         (app->logging && !app->log_ok && app->burst_total > 0) ? "!" : "");
     canvas_draw_str(canvas, 2, 62, buf);
@@ -311,6 +351,23 @@ int32_t enocean_rx_app(void* p) {
                     furi_mutex_acquire(app->mutex, FuriWaitForever);
                     app->logging = !app->logging;
                     furi_mutex_release(app->mutex);
+                } else if(event.key == InputKeyLeft || event.key == InputKeyRight) {
+                    /* switch CC1101 variant: restart the radio with new registers */
+                    enocean_radio_stop();
+                    furi_mutex_acquire(app->mutex, FuriWaitForever);
+                    if(event.key == InputKeyRight) {
+                        app->variant = (app->variant + 1) % ENOCEAN_VARIANT_COUNT;
+                    } else {
+                        app->variant = (app->variant + ENOCEAN_VARIANT_COUNT - 1) %
+                                       ENOCEAN_VARIANT_COUNT;
+                    }
+                    app->edge_count = 0;
+                    app->overruns = 0;
+                    furi_mutex_release(app->mutex);
+                    while(furi_stream_buffer_receive(
+                              app->edge_stream, &packed, sizeof(packed), 0) == sizeof(packed)) {
+                    }
+                    enocean_radio_start(app);
                 }
             }
         }

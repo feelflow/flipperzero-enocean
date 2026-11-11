@@ -33,3 +33,36 @@ sich weder ID noch Daten rekonstruieren, und ein Replay der Rohdaten erzeugt kei
 
 Phase 1 (`enocean_rx.c`) lädt ein eigenes Preset mit 125 kBaud und 650 kHz Bandbreite und liest die
 Flanken direkt aus der HAL. Ob die Auflösung dann reicht, zeigt der erste Test auf dem Gerät.
+
+---
+
+# Erste Messung mit der Phase-1-App (11.11.2026)
+
+Datei: [`captures/phase1_bursts_3_presses.sub.txt`](../captures/phase1_bursts_3_presses.sub.txt),
+Preset "650k" (650 kHz, ca. 125 kBaud), 3 Tastendrücke am Tracker.
+
+| Burst | Flanken | Gesamtdauer | Pulse in 8-µs-Einheiten (Vorzeichen = Pegel) |
+| --- | --- | --- | --- |
+| 42 | 11 | 746 µs | +2 -10 +14 -17 +19 -2 +2 -4 +16 -4 +4 |
+| 43 | 11 | 816 µs | +11 -8 +6 -4 +6 -17 +19 -2 +22 -4 +4 |
+
+## Befund
+
+- **Das 8-µs-Raster ist aufgelöst.** Alle 22 Pulse liegen innerhalb von ±3 µs auf einem Vielfachen
+  von 8 µs. Das ist die Bitdauer von ERP1 (125 kbit/s). Damit ist die Kernfrage von Phase 1
+  beantwortet: Der CC1101 im Flipper liefert die Bit-Zeitstruktur.
+- **Die Burstlänge passt.** 746 und 816 µs entsprechen etwa 93 bis 102 Bitzeiten, das ist die
+  Größenordnung eines kurzen ERP1-Telegramms (z. B. Taster).
+- **Es fehlen kurze Pulse.** Der kleinste Puls ist 15 µs (2 Bitzeiten), Einzel-Bit-Pulse (8 µs)
+  kommen nicht vor. Gleichzeitig gibt es lange Pegel von 14 bis 22 Bitzeiten. Das spricht dafür,
+  dass schnelle Wechsel vom Empfänger verschluckt werden (Datenfilter, DC-Filter,
+  Schwellenwert), die Bits also noch nicht zuverlässig rekonstruierbar sind.
+- Von den erwarteten 9 Bursts (3 Tastendrücke mal 3 Subtelegramme) enthält die Datei nur zwei.
+  Der Zähler stand bei 43, die Datei zeigt nur die Bursts 42 und 43.
+
+## Nächster Schritt
+
+Version 0.2 der App hat fünf Varianten der CC1101-Einstellungen, die man am Gerät mit Links/Rechts
+durchschaltet (Bandbreite 650/812 kHz, DC-Filter an/aus, 125/250 kBaud). Der Log-Header nennt die
+verwendete Variante. Ziel: eine Variante finden, bei der Einzel-Bit-Pulse (8 µs) auftauchen und
+alle drei Subtelegramme pro Tastendruck ankommen.

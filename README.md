@@ -17,7 +17,7 @@ Tastendruck), aber nicht **was**. Details: [docs/capture-analysis.md](docs/captu
 
 | Phase | Inhalt | Status |
 | --- | --- | --- |
-| 1 | CC1101 mit eigenem Preset (125 kBaud, 650 kHz, OOK) konfigurieren, rohe Flanken direkt aus der HAL lesen, Pulsstatistik anzeigen und Bursts auf SD loggen | Code geschrieben, **ungetestet** |
+| 1 | CC1101 mit eigenem Preset (125 kBaud, 650 kHz, OOK) konfigurieren, rohe Flanken direkt aus der HAL lesen, Pulsstatistik anzeigen und Bursts auf SD loggen | läuft, 8-µs-Raster ist aufgelöst, Einzel-Bit-Pulse fehlen noch (siehe [Analyse](docs/capture-analysis.md)) |
 | 2 | Bitstrom rekonstruieren: Preamble/SOF finden, 8/12-Dekodierung, CRC8, Sender-ID, RORG und Daten anzeigen | offen |
 | 3 | Telegramm mit eigener Sender-ID erzeugen und senden (Teach-in am Aktor) | offen |
 | 4 | Optional: Weitergabe an Home Assistant (WiFi-Devboard, MQTT/Webhook) | offen |
@@ -50,7 +50,7 @@ ufbt launch        # baut, lädt hoch und startet auf dem angeschlossenen Flippe
 2. EnOcean-Taster in wenigen Zentimetern Abstand drücken.
 3. Anzeige: Anzahl Bursts, Flanken pro Burst, Länge, kürzester/längster Puls, Pulse in drei
    Längenklassen (≤12 µs, 13–28 µs, >28 µs), RSSI.
-4. `OK` schaltet das Logging ein/aus. Log: `/ext/apps_data/enocean_rx/bursts.sub.txt` im
+4. `Links/Rechts` schaltet zwischen fünf CC1101-Varianten um (Bandbreite, DC-Filter, Datenrate), `OK` schaltet das Logging ein/aus. Log: `/ext/apps_data/enocean_rx/bursts.sub.txt` im
    RAW_Data-Format (`+` = high, `-` = low, Mikrosekunden).
 5. Die Datei bitte hochladen bzw. in `captures/` committen, dann kann sie ausgewertet werden.
 

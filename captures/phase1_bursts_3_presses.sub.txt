@@ -1,0 +1,4 @@
+# burst 42 edges=11 total_us=746
+RAW_Data: 15 -80 111 -136 151 -16 15 -32 127 -34 29
+# burst 43 edges=11 total_us=816
+RAW_Data: 87 -62 47 -32 49 -134 151 -16 177 -30 31

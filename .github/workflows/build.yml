@@ -1,0 +1,40 @@
+name: Build FAP
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ufbt (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: momentum
+            index: https://up.momentum-fw.dev/firmware/directory.json
+          - name: official
+            index: https://update.flipperzero.one/firmware/directory.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ufbt
+        run: pip install ufbt
+
+      - name: Install SDK
+        run: ufbt update --index-url=${{ matrix.index }} -c release
+
+      - name: Build
+        run: ufbt
+
+      - name: Upload FAP
+        uses: actions/upload-artifact@v4
+        with:
+          name: enocean_rx-${{ matrix.name }}
+          path: dist/*.fap

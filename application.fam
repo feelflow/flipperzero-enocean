@@ -1,0 +1,12 @@
+App(
+    appid="enocean_rx",
+    name="EnOcean RX Test",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="enocean_rx_app",
+    requires=["gui", "storage"],
+    stack_size=4 * 1024,
+    fap_category="Sub-GHz",
+    fap_author="feelflow",
+    fap_version="0.1",
+    fap_description="Experimental EnOcean ERP1 (868.3 MHz, ASK, 125 kbit/s) receiver - phase 1: raw edge capture",
+)
